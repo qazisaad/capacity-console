@@ -1,0 +1,96 @@
+# Work report
+
+Maintained log of implementation work on Capacity Console and the related HCP changes. Newest entries first within each section. Dates are absolute. Anything under **Needs you** requires a browser, an outward-facing action, credentials or a decision from the repository owner.
+
+## Status summary (2026-09-14, end of day)
+
+| Area | State |
+| --- | --- |
+| HCP management removal | Committed on local branch `remove-management` (e6b5040) with tag `management-baseline-0.4.0`; not pushed, 0.4.0 not published |
+| Plan docs | Extraction and delivery docs updated for the resolved release decision and demo persistence |
+| Gate 1: runtime, auth, database, bootstrap | **Done and verified** (production build, real PostgreSQL) |
+| Gate 2: organization monitoring end to end | **Done and verified** except the browser walkthrough and native provider read (see Needs you) |
+| Gate 3: capacity and renewal decisions | Partially done: pure policy relocated with tests, immutable policy revisions, in-app explanations. Not done: billing contexts, quotes, proposals, renewal UI |
+| Gate 4: authorized effects and recovery | Not started beyond relocated adapter/action code; blocked on live inputs regardless |
+| Gate 5: self-hosting and release | Partially done: setup script, lock-protected migrations, health, lease, shutdown; Docker image builds (99 MB) and the Compose stack ran locally with restart persistence. Not done: clean-machine run, backup/restore procedure, upgrade notes |
+
+## Needs you
+
+1. **Push and publish HCP.** In `/Users/qazisaad/Prolution/t3_p2a_exploration/hcp-runner`: push branch `remove-management` and tag `management-baseline-0.4.0`, merge, then `npm run release:publish` (needs npm login with publish access to `@harness-control`). After publication, replace the three `file:vendor/...` entries in `package.json` with `0.4.0`, run `npm install`, delete `vendor/`, and re-run the tests. Until then the app uses the vendored 0.4.0 tarballs whose SHA-256 values are in `vendor/MANIFEST.json` and match the HCP release manifest.
+2. **Browser walkthrough** of the app (gate 2 acceptance says a member sees a real observation rendered). Server-side rendering, redirects and every server function are covered by tests and curl, but no page was opened in a browser and no screenshot exists. Steps: `scripts/dev-db.sh`, `npm run setup`, load `.local/app.env`, `npm run db:migrate`, `npm run build && npm start`, open `/bootstrap`.
+3. **Native provider read.** The integration tests inject fixture provider data (labelled as such). A separate read-only run with a real `hcp-runner` against a signed-in Codex or Claude account has not been done from this app. `npx @harness-control/runner connect ws://localhost:3000/runner` against a running instance, then enable `account_usage` on a provider in the runner config.
+4. **Clean-machine test** (gate 5). The Compose stack ran on this machine (see evidence). Repeat on a clean machine: clone, `npm run setup`, `POSTGRES_PASSWORD=... PORT=... docker compose up -d --build`, bootstrap in the browser, pair a runner, restart, and record the result.
+5. **Browser check of the reduced HCP account demo** (`npm run demo:accounts` in the HCP checkout).
+6. **Gate 4 live inputs** (later): Claude Enterprise organization id, designated test member, admin key reference via env or secret manager, verified spend-period contract, explicit allowed test change.
+7. **Commit decision.** All app work is committed on local branch `implement-monitoring`, not on `main`, and is not pushed. Tell me whether to open a PR or merge.
+
+## Completed
+
+### 2026-09-14: App gates 1 and 2 implemented and verified
+
+Runtime composition (gate 1 spike, proved with the production build, not the dev server):
+
+- `vite build` emits `dist/client` and one `dist/server/server.js` whose default export is the TanStack Start fetch handler. A custom server entry (`src/server.ts`) also exports `createRuntime`, so the WebSocket gateway, lease and background loop ship in the same bundle.
+- `server/index.mjs` is plain Node: static assets from `dist/client`, everything else through the fetch handler, `/runner` upgrades to the gateway, SIGTERM closes sockets, releases the lease and exits. Verified with curl and `ws`: pages render server-side, redirects to `/bootstrap` while bootstrap is open, `/health/live` and `/health/ready` (database, schema version, configuration, lease), unauthorized upgrade rejected with 401, a second process gets `ready:false` with `lease:false` and 503.
+- Better Auth 1.7.4 with the Drizzle adapter, organization plugin (roles owner/admin/member/auditor registered through access control), TanStack Start cookies, telemetry disabled, trusted origin from `APP_ORIGIN`. Public sign-up is blocked by a before-hook unless the caller carries a per-process internal marker; only bootstrap and invitation redemption set it.
+- PostgreSQL schema in `src/server/db/schema.ts` (auth tables generated by the Better Auth CLI plus installation, pairing_requests, runners, account_sources, observation_history, provider_accounts, capacity_policies, audit_events, runtime_lease). Versioned Drizzle migration in `drizzle/`; `server/migrate.mjs` runs under `pg_advisory_lock`; readiness compares the applied migration timestamp with the journal bundled into the build.
+- Secrets: AES-256-GCM with key id and associated data (`src/server/secrets.ts`); credential digests for runner secrets; encrypted pairing delivery envelope purged at expiry.
+
+Monitoring (gate 2):
+
+- Pairing routes at the origin root exactly as the runner expects; browser approval binds a request to the approving member's organization (owners/admins may enrol for a named member, audited separately); connection tokens are single-use and 60s; the token request checks credential digest, identity, protocol version and the installed protocol schema hash.
+- Gateway: authentication before HCP acceptance, hello identity match, per-socket connection generation with fencing of replaced sockets, coalesced reads, persistence only for the current generation. Ingestion applies the canonical `HcpAccountUsageReducer`, upserts per-source state, appends history, upserts provider accounts without touching assignment.
+- Organization projection rebuilds the reducer from stored sources namespaced by runner row, so shared hostnames cannot collide and the same account on several machines is one account.
+- Policy revisions (immutable, one active, `expectedRevision` conflict), account assignment with verification and revision conflict, runner revocation with generation check and socket fencing, audit events in the same transaction as their change.
+- UI: bootstrap, login, invitation redemption, organization creation, authenticated layout, overview (15s polling), people and machines (invite links, refresh, revoke), pairing approval, account detail with history and policy explanation, policies with revision history, audit, settings.
+
+Verification evidence (all run on 2026-09-14 against PostgreSQL 17 in Docker):
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| Unit tests (`tests/unit`) | 9 pass: relocated policy, spend and action tests plus the string-money contract |
+| Integration `identity.test.ts` | 4 pass: closed sign-up 403; two simultaneous bootstraps create one admin and the token stays consumed; org creation seeds policy revision 1; invitation redeemed by a new user; role checks; cross-org selection refused |
+| Integration `hcp-flow.test.ts` | 3 pass with the real `@harness-control/runner` 0.4.0: pairing via `pairWithReferenceControlPlane`, credential redelivery only to the matching exchange proof, approval by a member of another org binds to that org only; connected runner reads fixture accounts over a real WebSocket, two provider instances of one scoped account project as one account (not summed), tenant isolation on read/refresh/revoke/assign, assignment revision conflict, coalesced manual refresh, revocation fences the live socket and blocks token issuance, history retained; failing reads keep last-good data as `unavailable` without leaking the provider error; runtime restart rehydrates from PostgreSQL and the reconnecting runner produces a fresh read |
+| Production smoke (curl, ws) | listed above under runtime composition |
+| `node scripts/check-docs.mjs` | 11 files, 23 links OK |
+| `docker build` | image `capacity-console:dev` built from a clean context, 99 MB |
+| `docker compose up` (project `cctest`, published port 3470) | migrate container exited 0, app `/health/ready` 200 with lease held, `/` redirects to `/bootstrap`, `POST /pairing-codes` accepted, `docker compose restart app` came back ready and the pairing row survived; stack torn down with volumes |
+
+Injected provider data in the integration scenario is fixture data and is labelled as such in the test file.
+
+### 2026-09-14: HCP management package removed before release
+
+- Branch `remove-management`, commit e6b5040, in the HCP checkout. Package deleted; workspace, tsconfig, lockfile, release check and publish scripts cover three packages. Account demo reduced to connect, read, reduce, render with in-memory state. Public SDK example asserts the canonical projection. Docs updated.
+- Verification: `tsc -b` clean; 180 workspace tests pass; `release:check` packed and clean-installed three 0.4.0 tarballs and ran the public SDK acceptance; `npm audit --omit=dev` 0 vulnerabilities.
+
+### 2026-09-14: Plan changes
+
+- `docs/implementation/04-hcp-extraction.md`: registry recheck recorded, removal-before-release decision resolved, steps D and E merged, demo persistence decision recorded, baseline tag named.
+- `docs/implementation/05-delivery-and-validation.md`: gaps entry updated.
+
+## Decisions taken during implementation
+
+- Exact-version pins; TypeScript 5.9.3 instead of the 7.x alias used by TanStack examples; Vitest 5 with `unit` and `integration` projects.
+- HCP packages consumed as vendored release tarballs until published (documented deviation; see Needs you 1).
+- App-wide money contract: exact minor-unit decimal strings compared as BigInt. The relocated quote policy was adapted accordingly; this is the one behavior change recorded in `docs/PROVENANCE.md`.
+- Connection tokens are held in process memory. This is consistent with the one-process deployment; a restart between token issue and connect makes the runner request a new token.
+- Organization creation is allowed for any signed-in user (they become owner). Membership elsewhere remains invitation-only.
+- The runner endpoint and pairing URLs derive from `APP_ORIGIN`, never from request headers. Runners must be given that exact origin; the runner compares it.
+- The account demo in HCP keeps state in memory only.
+
+## Open risks and gaps
+
+- `file:` tarball dependencies are not acceptable for a public release; switch after publication.
+- Rate limiting on the unauthenticated pairing routes is not implemented; requests expire after 10 minutes and only carry identity plus a hash.
+- No SMTP delivery yet; administrators copy invitation links. Password recovery for a local operator is not implemented.
+- Billing contexts, quotes, proposals, connector configuration, budget periods and actions (gates 3 and 4) are not implemented. The UI states this explicitly instead of showing placeholders as data.
+- Retention deletion and CSV export are not implemented.
+- Compose has run only on this machine; the clean-machine acceptance in gate 5 is still open.
+
+## Next steps (in order)
+
+1. Publish HCP 0.4.0 and switch to registry versions (needs you).
+2. Gate 3 remainder: billing contexts with revisions, quotes, proposals with stable decision identity, renewal review, decision explanations with missing fields.
+3. Gate 4: provider connections with encrypted secrets, budget periods, action ledger with PostgreSQL attempt ownership, dispatcher and read-only recovery, connector verification flow (execution disabled until live inputs exist).
+4. Gate 5: Compose run, backup/restore procedure with a tested sample, upgrade notes, clean-machine acceptance.

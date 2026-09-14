@@ -1,0 +1,30 @@
+# Local or single-server deployment: the app plus PostgreSQL. Load secrets from .local/app.env (npm run setup).
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: capacity
+      POSTGRES_USER: capacity
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run npm run setup and export POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U capacity -d capacity"], interval: 5s, timeout: 3s, retries: 20 }
+  migrate:
+    build: .
+    command: ["node", "server/migrate.mjs"]
+    environment: { DATABASE_URL: "postgres://capacity:${POSTGRES_PASSWORD}@db:5432/capacity" }
+    depends_on: { db: { condition: service_healthy } }
+  app:
+    build: .
+    env_file: [.local/app.env]
+    environment:
+      DATABASE_URL: "postgres://capacity:${POSTGRES_PASSWORD}@db:5432/capacity"
+      HOST: 0.0.0.0
+      PORT: "3000"   # container port; the published host port follows APP_ORIGIN via ${PORT}
+    ports: ["127.0.0.1:${PORT:-3000}:3000"]
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck: { test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health/ready || exit 1"], interval: 15s, timeout: 5s, start_period: 20s, retries: 5 }
+    restart: unless-stopped
+volumes:
+  pgdata:

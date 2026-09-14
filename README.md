@@ -2,36 +2,65 @@
 
 An independent, open-source organization app for understanding coding-agent account capacity and managing authorized usage spending.
 
-**Status: implementation documentation only.** There is no running application, Docker image, database migration, or relocated HCP code yet. Capacity Console is a working name. The implementation documents below are the build contract; they distinguish implemented upstream behavior from planned application behavior and verification gates.
+**Status: monitoring product implemented and tested locally (gates 1 and 2 of the delivery plan); decisions, authorized effects and the release gate are in progress.** Capacity Console is a working name. See [the work report](docs/WORK-REPORT.md) for what is verified, what is deferred and what needs the repository owner.
 
-The intended stack is TanStack Start, React, TypeScript, PostgreSQL, Drizzle, Better Auth, and a Node.js HCP WebSocket endpoint. The deployment target is one application container and PostgreSQL. Basic operation must not require a cloud service account. No runtime or source dependency on P2A, Agentic Playground, or T3 is permitted.
+Stack: TanStack Start, React, TypeScript, PostgreSQL, Drizzle, Better Auth (organization plugin) and a Node.js HCP WebSocket endpoint, all in one Node process plus PostgreSQL. No cloud service account is required. No runtime or source dependency on P2A, Agentic Playground or T3 exists.
 
-## Read in this order
+## What works today
 
-1. [Product scope](docs/implementation/01-product-scope.md): users, screens, supported behavior and exclusions.
-2. [Architecture and data](docs/implementation/02-architecture-contract.md): stack, ownership, authorization, storage and boundaries.
-3. [Behavior and recovery](docs/implementation/03-behavior-and-recovery.md): pairing, observations, decisions, spending and failure handling.
-4. [HCP extraction](docs/implementation/04-hcp-extraction.md): exact source inventory, move/keep decisions and release sequencing.
-5. [Delivery and validation](docs/implementation/05-delivery-and-validation.md): implementation gates and observable acceptance scenarios.
+- One-time bootstrap of the first administrator, closed public sign-up, invitation-only membership with owner, admin, member and auditor roles, and per-request server-side authorization.
+- HCP pairing (`/pairing-codes`, `/pairing-exchange`, `/runner-connection-token`), browser approval of a machine for a member, short-lived single-use connection tokens, and the `/runner` WebSocket on the same origin.
+- Account observations read through the public HCP SDK, reduced by HCP's canonical reducer, persisted per organization with append-only history, and shown on the overview and account pages with the active policy's explanation. Unknown values stay unknown.
+- Immutable capacity policy revisions, account-to-member assignment with verification, runner revocation with socket fencing, a database-owned singleton lease, health endpoints, audit events and graceful shutdown.
+- Relocated policy, spend and Claude Enterprise adapter code with provenance; the connector stays disabled.
 
-[Self-hosting requirements](docs/self-hosting.md) define the installation, configuration, backup and upgrade experience that the implementation must deliver. [Contributing](CONTRIBUTING.md) explains how to develop from these documents.
+## Run it locally
 
-## Repository boundary
-
-HCP connects to and observes employee-machine harnesses. Capacity Console owns company membership, account assignments, policies, budgets, billing integrations, approvals, scheduling and audit storage. The app will use pinned public `@harness-control/protocol` and `@harness-control/sdk` packages; employees run `@harness-control/runner`. The app will not depend on `@harness-control/management`: its useful implementation is to be relocated here under the extraction plan.
-
-Automatic subscription purchases, account issuance and login rotation are not currently supported. Account monitoring and recommendations can ship independently of provider administration. A Claude Enterprise spending-cap change permits future charges; it does not upgrade a subscription.
-
-## Current checks
-
-Node.js is sufficient to check this documentation-only repository:
+Requires Node 22 and PostgreSQL (Docker is the quickest: `scripts/dev-db.sh`).
 
 ```sh
+npm ci
+npm run setup                     # writes .local/app.env with generated secrets
+set -a; . .local/app.env; set +a  # or export the variables another way
+npm run db:migrate
+npm run build && npm start
+```
+
+Open `APP_ORIGIN/bootstrap`, enter the bootstrap token from `.local/app.env`, create the organization, invite members. Each member pairs their machine with the public HCP runner:
+
+```sh
+npx @harness-control/runner connect ws://localhost:3000/runner
+```
+
+The runner prints an approval link that opens the app. Enable account usage per provider in the runner configuration (see the HCP runner README).
+
+## Checks
+
+```sh
+npm run typecheck
+npm run test:unit
+TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/capacity_test npm run test:integration
 node scripts/check-docs.mjs
 ```
 
-Application installation commands will be added only after they have been implemented and tested from a clean clone. No cloud repository or deployment has been created by this initialization.
+Integration tests need a real PostgreSQL and exercise the actual runner package, WebSocket, reducer and database. `scripts/dev-db.sh` starts a matching Docker database.
+
+## Read in this order
+
+1. [Product scope](docs/implementation/01-product-scope.md)
+2. [Architecture and data](docs/implementation/02-architecture-contract.md)
+3. [Behavior and recovery](docs/implementation/03-behavior-and-recovery.md)
+4. [HCP extraction](docs/implementation/04-hcp-extraction.md)
+5. [Delivery and validation](docs/implementation/05-delivery-and-validation.md)
+
+[Self-hosting](docs/self-hosting.md) describes installation, configuration, backup and upgrade. [Provenance](docs/PROVENANCE.md) records code moved from HCP. [Contributing](CONTRIBUTING.md) explains how to develop.
+
+## Repository boundary
+
+HCP connects to and observes employee-machine harnesses. Capacity Console owns company membership, account assignments, policies, budgets, billing integrations, approvals, scheduling and audit storage. The app uses the public `@harness-control/protocol` and `@harness-control/sdk` packages; employees run `@harness-control/runner`. Until 0.4.0 of those packages is published, the exact 0.4.0 release tarballs are vendored under `vendor/` with recorded checksums; switching to registry versions is a one-line change per package.
+
+Automatic subscription purchases, account issuance and login rotation are not supported. A Claude Enterprise spending-cap change permits future charges; it does not upgrade a subscription.
 
 ## License
 
-Apache-2.0; see [LICENSE](LICENSE). Any code subsequently moved from HCP must retain its applicable notices and source provenance as described in the extraction plan.
+Apache-2.0; see [LICENSE](LICENSE). Code moved from HCP retains its notices as described in [PROVENANCE](docs/PROVENANCE.md).

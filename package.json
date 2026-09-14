@@ -1,11 +1,51 @@
 {
   "name": "capacity-console",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Documentation-first independent organization capacity app",
+  "description": "Independent organization app for coding-agent account capacity and authorized spending",
+  "engines": { "node": ">=22.12 <23" },
   "scripts": {
+    "dev": "vite dev --port 3000",
+    "build": "vite build",
+    "start": "node server/index.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node server/migrate.mjs",
+    "setup": "node scripts/setup.mjs",
     "docs:check": "node scripts/check-docs.mjs"
+  },
+  "dependencies": {
+    "@harness-control/protocol": "file:vendor/harness-control-protocol-0.4.0.tgz",
+    "@harness-control/sdk": "file:vendor/harness-control-sdk-0.4.0.tgz",
+    "@tanstack/react-query": "5.102.8",
+    "@tanstack/react-router": "1.170.36",
+    "@tanstack/react-start": "1.168.54",
+    "better-auth": "1.7.4",
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "ws": "8.21.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@harness-control/runner": "file:vendor/harness-control-runner-0.4.0.tgz",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "22.20.2",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/ws": "8.18.1",
+    "@vitejs/plugin-react": "6.1.1",
+    "drizzle-kit": "0.31.10",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
   }
 }

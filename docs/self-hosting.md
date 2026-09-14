@@ -1,7 +1,6 @@
-# Self-hosting contract
+# Self-hosting
 
-**This is the required deployment experience to implement, not an installation guide for an existing app.** Compose files, setup scripts, migrations and images do not exist yet. Replace planned steps with tested commands as delivery gate five completes. The current runnable check is `node scripts/check-docs.mjs`.
-
+**Implementation status (2026-09-14):** setup, migrations, bootstrap, health endpoints, the singleton lease and graceful shutdown are implemented and were tested locally against the production build. The `Dockerfile` builds and `compose.yaml` ran on the development machine (migrate, ready, restart with state kept). The clean-machine acceptance, backup/restore procedure and upgrade notes are still open, so one-command installation is not advertised yet. Development uses `scripts/dev-db.sh` for PostgreSQL.
 ## Supported deployment
 
 One app container and one PostgreSQL database, locally or on a Linux server. The app serves browser HTTP and authenticated HCP WebSockets on the same public origin; employee machines initiate outbound connections. One active app process per database is supported initially, enforced by a database lease. Managed PostgreSQL is optional and uses the same schema/behavior. Production TLS may be terminated by the operator's existing reverse proxy; provide one tested example with WebSocket forwarding and trusted proxy configuration.
@@ -19,7 +18,7 @@ Do not require registration with a hosted auth, database, telemetry, email or or
 
 ## Configuration contract
 
-Proposed variable names are recorded in [.env.example](../.env.example); they are not consumed by code yet. Keep the eventual schema and this table synchronized. Secrets are server-only and never exposed through client-prefixed environment variables.
+Variables are validated at startup by `src/server/env.ts`; [.env.example](../.env.example) mirrors them. Keep the schema and this table synchronized. Secrets are server-only and never exposed through client-prefixed environment variables.
 
 | Variable | Purpose and behavior |
 | --- | --- |
@@ -27,7 +26,7 @@ Proposed variable names are recorded in [.env.example](../.env.example); they ar
 | `PORT` | App listener port, default 3000; internal container binding must match published mapping |
 | `DATABASE_URL` | PostgreSQL credentials/connection; setup generates local password and writes private config |
 | `BETTER_AUTH_SECRET` | Persistent authentication secret, generated during setup |
-| `CREDENTIAL_ENCRYPTION_KEY` | Persistent encryption key for org connector secrets and pairing delivery envelopes; losing it makes encrypted values unreadable |
+| `CREDENTIAL_ENCRYPTION_KEY`, `CREDENTIAL_ENCRYPTION_KEY_ID` | Persistent base64 32-byte AES-256-GCM key and its id for org connector secrets and pairing delivery envelopes; losing it makes encrypted values unreadable. `*_PREVIOUS`/`*_PREVIOUS_ID` keep an old key readable during rotation |
 | `BOOTSTRAP_TOKEN` | One-time installation secret used only until bootstrap consumption; remove from deployed config afterward |
 | `SMTP_URL`, `SMTP_FROM` | Optional email delivery; without them use admin-copy invitation links and an explicit local operator account-recovery procedure |
 

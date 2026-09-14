@@ -1,0 +1,22 @@
+{
+  "packages": [
+    {
+      "name": "@harness-control/protocol",
+      "version": "0.4.0",
+      "filename": "harness-control-protocol-0.4.0.tgz",
+      "sha256": "11f3cb9f4bb76780e71cc49171a25697f92797512da40b3cac3cee90d1ea1fca"
+    },
+    {
+      "name": "@harness-control/sdk",
+      "version": "0.4.0",
+      "filename": "harness-control-sdk-0.4.0.tgz",
+      "sha256": "2c623918bbed23af6ea342ea36b5b44ac38c92ec9e08f506dd1b3345da058897"
+    },
+    {
+      "name": "@harness-control/runner",
+      "version": "0.4.0",
+      "filename": "harness-control-runner-0.4.0.tgz",
+      "sha256": "59274d01e909c4dd884de18f0868dc90f64c657392693d032e4c5fe028e3eb64"
+    }
+  ]
+}

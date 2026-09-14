@@ -1,8 +1,8 @@
 # Contributing
 
-This repository currently contains implementation documentation, not a working app. Begin with the [README](README.md) and ordered [delivery gates](docs/implementation/05-delivery-and-validation.md).
+Begin with the [README](README.md), the ordered [delivery gates](docs/implementation/05-delivery-and-validation.md) and the [work report](docs/WORK-REPORT.md).
 
-Run `node scripts/check-docs.mjs` to check local documentation references. When application code is added, commit exact dependencies/lockfile, document real setup commands, and add focused unit, PostgreSQL integration and production-build acceptance checks. Never claim live provider behavior from fixtures.
+Run `npm run typecheck`, `npm run test:unit`, `npm run test:integration` (real PostgreSQL, see `scripts/dev-db.sh`) and `node scripts/check-docs.mjs`. Dependencies are pinned exactly with a committed lockfile. Add focused unit tests for pure logic, PostgreSQL integration tests for anything touching authority, locking or the reducer, and production-build checks for runtime composition. Never claim live provider behavior from fixtures; label injected provider data as such.
 
 Keep the repository independent of P2A, Agentic Playground and T3. HCP public protocol/SDK packages are intentional dependencies; sibling directory imports, submodules, copied node_modules, shared application databases and unpublished local package links are not acceptable release dependencies.
 

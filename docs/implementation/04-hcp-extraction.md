@@ -1,12 +1,14 @@
 # Move product policy out of HCP
 
-**Status: planned, not performed by this documentation initialization.** Neither HCP source nor package exports were changed. Do not import its management package into the new app as an intermediate permanent architecture.
+**Status: HCP removal in progress; app-side relocation not started.** Do not import the management package into the new app as an intermediate permanent architecture. Its source remains available at the tagged baseline commit below.
 
 ## Source baseline and evidence
 
 Reviewed source: [HCP commit 68a1afc](https://github.com/qazisaad/harness-control-protocol/commit/68a1afcd0cbe44da73d89474245fd7c931bb3d27), local checkout `/Users/qazisaad/Prolution/t3_p2a_exploration/hcp-runner`. That local path is research provenance only, never a build dependency. Source paths in the following table are relative to that commit; destination paths are proposed in this app.
 
-The HCP tree contains four coordinated 0.4.0 package manifests and a private account dashboard. On 2026-09-13, a public `npm view @harness-control/management version` returned E404. The same registry check returned protocol version `0.3.0`; the reviewed account-capable source is the `0.4.0` candidate. A released account-capable core version is therefore a prerequisite for the public app clean-install gate. This does not prove no private consumer, tarball installation or later publication exists. Recheck registry versions, repository changes and known consumers immediately before extraction. Never remove a published package version from npm as a migration mechanism.
+The HCP tree at that commit contained four coordinated 0.4.0 package manifests and a private account dashboard. Registry checks on 2026-09-13 and again on 2026-09-14 returned protocol, SDK and runner at `0.3.0` and management E404; `origin/main` had no commits after the baseline. The only management consumers were inside the HCP repository itself: the account demo, `examples/public-sdk.mjs`, `scripts/check-release.mjs`, the root tsconfig and documentation. No private consumer or tarball installation is known.
+
+Decision (2026-09-14): management is removed from HCP before the 0.4.0 release, so no version of `@harness-control/management` is ever published and no deprecation path is needed. The 0.4.0 release therefore ships three packages: protocol, SDK and runner. A released account-capable core version remains a prerequisite for the public app clean-install gate. Never remove a published package version from npm as a migration mechanism.
 
 ## Exact move/keep inventory
 
@@ -42,21 +44,19 @@ The HCP tree contains four coordinated 0.4.0 package manifests and a private acc
 
 A. Inventory the latest HCP tree, package registry and known consumers. Record the source commit, licenses/notices and API usage. Check the new app dependency graph has no management, file/link, git-submodule or sibling-checkout import.
 
-B. Relocate the app-owned code with its tests and provenance. Adapt it to the contract here. This brief migration may temporarily leave the source copy in HCP for consumer stability, but it is not an ongoing shared source of truth: fixes to app policy land here, and removal has an explicit gate.
+B. Relocate the app-owned code with its tests and provenance from the tagged baseline commit. Adapt it to the contract here. HCP is not a shared source of truth: fixes to app policy land here only.
 
 C. Build the application's PostgreSQL and tenant integration, and prove policy/administration recovery against fixtures. No app runtime import of `@harness-control/management` is allowed. Do not copy installed dependencies, native credentials, node_modules, compiled output, local JSON ledgers or observed user data.
 
-D. Reduce HCP's account demo to connecting/reading/rendering normalized capacity. Remove billing quote imports, budget and renewal UI, administrative stores, and management dependency. Adjust `examples/public-sdk.mjs` to assert account reads/reduction without a management decision. Update workspace references, lockfile, root README, `docs/account-capacity.md`, `docs/public-packages.md`, `docs/release.md` and `scripts/check-release.mjs`. Search the entire tracked tree for stale management imports and public claims.
+D. Remove management from HCP in one change, before the 0.4.0 release. Delete the package, and reduce the account demo to connecting, reading and rendering normalized capacity: remove policy, quote, budget and renewal UI, the settings endpoint and the management dependency. The demo keeps its state in memory only; the `ExclusiveJsonFile` store leaves with the package and the demo drops its state-file option, because a reconnecting runner re-reads accounts and the demo has no policy left to persist. Adjust `examples/public-sdk.mjs` to assert account reads/reduction without a management decision. Update workspace references, lockfile, root README, `docs/account-capacity.md`, `docs/public-packages.md`, `docs/release.md` and `scripts/check-release.mjs` to three packages. Search the entire tracked tree for stale management imports and public claims. The observation protocol remains compatible; no new billing messages are introduced.
 
-E. Handle release compatibility explicitly. If unpublished and no consumers, remove management from the next candidate and coordinate the three remaining core packages. If already released/consumed, retain immutable artifacts and document the removal/deprecation in a new appropriate version; migrate known consumers before deleting their source API. Do not rewrite an existing published version. The observation protocol should remain compatible; no new billing messages are introduced.
-
-F. Validate both repositories independently from clean environments. HCP still reads native accounts without the app; the app builds and tests without an HCP checkout. Release-install acceptance uses exact public versions of protocol/SDK and separately installed runner. Only after this passes may the old source/package path be considered removed.
+E. Validate both repositories independently from clean environments. HCP still reads native accounts without the app; the app builds and tests without an HCP checkout. Release-install acceptance uses exact public versions of protocol/SDK and separately installed runner. Only after this passes may the old source/package path be considered removed.
 
 ## Existing data and rollback
 
 No production app database exists at this baseline. Do not build a general import framework speculatively. If a real HCP-demo/action-ledger user is found, add a narrowly scoped one-shot migration: operator selects target organization/member mapping, sources stay explicitly historical until refreshed, unknown/pending actions keep reservations/locks, and no provider write occurs during import. Imported secrets require explicit reconfiguration, not copying runner homes.
 
-Before source removal, tag/record the validated upstream baseline and app provenance. Rollback deploys a compatible app/database snapshot with writes disabled; restore code independently of data where possible. Never replay provider writes from restored jobs. Do not roll back to a stale ledger and assume its unapplied actions are safe. Preserve the last committed financial evidence and reconcile provider state first.
+The validated upstream baseline is HCP commit `68a1afc`, tagged locally in that checkout as `management-baseline-0.4.0` before removal; the tag must be pushed with the removal change so the moved source stays addressable. Record app provenance against that tag. Rollback deploys a compatible app/database snapshot with writes disabled; restore code independently of data where possible. Never replay provider writes from restored jobs. Do not roll back to a stale ledger and assume its unapplied actions are safe. Preserve the last committed financial evidence and reconcile provider state first.
 
 ## Exit criteria
 
