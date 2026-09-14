@@ -5,7 +5,7 @@ import { capacityPolicies, member } from "../db/schema";
 import { recordAudit } from "../audit";
 import { randomId } from "../secrets";
 import { capacityPolicySchema } from "../capacity/policy";
-import { auth } from "./auth";
+import { auth, transactionalAuth } from "./auth";
 import { AuthorizationError, requireSession } from "./session";
 
 export const createOrganizationInputSchema = z.object({
@@ -17,14 +17,15 @@ export const createOrganizationInputSchema = z.object({
 export async function createOrganization(headers: Headers, input: z.infer<typeof createOrganizationInputSchema>): Promise<{ organizationId: string }> {
   const data = createOrganizationInputSchema.parse(input);
   const session = await requireSession(headers);
-  const created = await auth().api.createOrganization({ body: { name: data.name, slug: data.slug }, headers });
-  if (!created) throw new AuthorizationError(409, "Organization could not be created.");
-  await auth().api.setActiveOrganization({ body: { organizationId: created.id }, headers });
-  await db().transaction(async tx => {
+  return db().transaction(async tx => {
+    const scopedAuth = transactionalAuth(tx);
+    const created = await scopedAuth.api.createOrganization({ body: { name: data.name, slug: data.slug }, headers });
+    if (!created) throw new AuthorizationError(409, "Organization could not be created.");
+    await scopedAuth.api.setActiveOrganization({ body: { organizationId: created.id }, headers });
     await tx.insert(capacityPolicies).values({ id: randomId(), organizationId: created.id, revision: 1, policy: capacityPolicySchema.parse({}), active: true, createdByUserId: session.user.id });
     await recordAudit(tx, { organizationId: created.id, actorUserId: session.user.id, kind: "organization.created", subjectType: "organization", subjectId: created.id, details: { slug: data.slug } });
+    return { organizationId: created.id };
   });
-  return { organizationId: created.id };
 }
 
 export async function selectOrganization(headers: Headers, organizationId: string): Promise<void> {

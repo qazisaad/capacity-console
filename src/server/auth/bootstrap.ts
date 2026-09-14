@@ -5,7 +5,7 @@ import { installation } from "../db/schema";
 import { env } from "../env";
 import { recordAudit } from "../audit";
 import { digest, digestMatches } from "../secrets";
-import { auth, INTERNAL_SIGNUP_HEADER, internalSignupMarker } from "./auth";
+import { transactionalAuth, INTERNAL_SIGNUP_HEADER, internalSignupMarker } from "./auth";
 import { AuthorizationError } from "./session";
 
 export const bootstrapInputSchema = z.object({
@@ -43,7 +43,7 @@ export async function bootstrapAdmin(input: BootstrapInput): Promise<{ userId: s
     if (!row) throw new AuthorizationError(409, "This installation has no bootstrap token. Run setup first.");
     if (row.bootstrapConsumedAt) throw new AuthorizationError(409, "Bootstrap has already been completed.");
     if (!digestMatches(data.token, row.bootstrapTokenHash)) throw new AuthorizationError(403, "Invalid bootstrap token.");
-    const result = await auth().api.signUpEmail({
+    const result = await transactionalAuth(tx).api.signUpEmail({
       body: { email: data.email, password: data.password, name: data.name },
       headers: new Headers({ [INTERNAL_SIGNUP_HEADER]: internalSignupMarker }),
       returnHeaders: true,

@@ -12,15 +12,26 @@ export async function loadRunnerSources(runnerRowId: string, handle: Db = db()):
 }
 
 /**
- * Persist the reducer's post-apply state for each provider in a correlated snapshot. Omitted providers are untouched.
+ * Reduce a correlated snapshot from locked durable state. Omitted providers are untouched.
  * The observation is appended to history; provider accounts are upserted without touching assignment or verification.
  */
 export async function persistSnapshot(input: {
-  organizationId: string; runnerRowId: string; snapshot: HcpAccountsSnapshotPayload; states: readonly AccountSourceState[]; receivedAt: Date;
+  organizationId: string; runnerRowId: string; generation: number; snapshot: HcpAccountsSnapshotPayload; receivedAt: Date;
 }, handle: Db = db()): Promise<void> {
   await handle.transaction(async tx => {
+    const [runner] = await tx.select().from(runners).where(and(eq(runners.id, input.runnerRowId), eq(runners.organizationId, input.organizationId))).for("update");
+    if (!runner || runner.revokedAt || runner.connectionGeneration !== input.generation || runner.hostId !== input.snapshot.host_id) {
+      throw new Error("Runner generation is no longer authorized.");
+    }
+    const stored = await tx.select().from(accountSources).where(eq(accountSources.runnerRowId, runner.id));
+    const reducer = new HcpAccountUsageReducer(stored.filter(source => !source.retiredAt).map(source => accountSourceStateSchema.parse(source.state)));
+    reducer.apply(input.snapshot);
+    const states = reducer.snapshot();
     for (const reading of input.snapshot.providers) {
-      const state = input.states.find(candidate => candidate.host_id === input.snapshot.host_id && candidate.provider_instance_id === reading.provider_instance_id);
+      const prior = stored.find(source => source.providerInstanceId === reading.provider_instance_id);
+      if (prior?.retiredAt) continue;
+      if (prior && Date.parse(accountSourceStateSchema.parse(prior.state).latest.observed_at) >= Date.parse(reading.observation.observed_at)) continue;
+      const state = states.find(candidate => candidate.host_id === input.snapshot.host_id && candidate.provider_instance_id === reading.provider_instance_id);
       if (!state) continue;
       const accountKey = state.last_success?.account.key ?? null;
       const [source] = await tx.insert(accountSources)
@@ -52,10 +63,10 @@ export type AccountProjection = {
  * Organization-wide projection through the canonical reducer. Sources are namespaced by runner row so two machines
  * that share a hostname label never collide; the same account seen on several machines is one account, never summed.
  */
-export async function readOrganizationAccounts(organizationId: string, now: Date, maxAgeMs: number, handle: Db = db()): Promise<{ accounts: AccountProjection[]; unavailableSources: SourceRef[] }> {
+export async function readOrganizationAccounts(organizationId: string, now: Date, maxAgeMs: number, handle: Db = db(), visibleMemberId?: string): Promise<{ accounts: AccountProjection[]; unavailableSources: SourceRef[] }> {
   const rows = await handle.select({ id: accountSources.id, runnerRowId: accountSources.runnerRowId, providerInstanceId: accountSources.providerInstanceId, state: accountSources.state, receivedAt: accountSources.receivedAt, hostId: runners.hostId, memberId: runners.memberId, revokedAt: runners.revokedAt })
     .from(accountSources).innerJoin(runners, eq(runners.id, accountSources.runnerRowId))
-    .where(and(eq(accountSources.organizationId, organizationId), isNull(accountSources.retiredAt)));
+    .where(and(eq(accountSources.organizationId, organizationId), isNull(accountSources.retiredAt), ...(visibleMemberId ? [eq(runners.memberId, visibleMemberId)] : [])));
   const refs = new Map<string, SourceRef>();
   const states: AccountSourceState[] = [];
   for (const row of rows) {
@@ -72,7 +83,7 @@ export async function readOrganizationAccounts(organizationId: string, now: Date
     return {
       account: view.account, observation: view.observation, freshness: view.freshness,
       sources: view.sources.map(source => refs.get(JSON.stringify([source.host_id, source.provider_instance_id]))!).filter(Boolean),
-      assignment: assignment ? { providerAccountId: assignment.id, memberId: assignment.memberId, verification: assignment.verification, revision: assignment.revision } : null,
+      assignment: assignment ? { providerAccountId: assignment.id, memberId: visibleMemberId && assignment.memberId !== visibleMemberId ? null : assignment.memberId, verification: assignment.verification, revision: assignment.revision } : null,
     };
   });
   const unavailableSources = states.filter(state => !state.last_success).map(state => refs.get(JSON.stringify([state.host_id, state.provider_instance_id]))!);

@@ -1,30 +1,83 @@
 # Work report
 
-Maintained log of implementation work on Capacity Console and the related HCP changes. Newest entries first within each section. Dates are absolute. Anything under **Needs you** requires a browser, an outward-facing action, credentials or a decision from the repository owner.
+Maintained implementation and review record. The current status and open findings below supersede the original implementation claims retained in the historical section. Review date: 2026-09-14.
 
-## Status summary (2026-09-14, end of day)
+## Current assessment
 
-| Area | State |
+The monitoring path works through a real browser, public HCP runner, signed-in Codex account, WebSocket and PostgreSQL. It is a development preview, not yet a release-ready organization product. The original statement that everything remaining needs the owner was incorrect: identity, offboarding, admission controls and retention need application work.
+
+| Area | Reviewed state |
 | --- | --- |
-| HCP management removal | Committed on local branch `remove-management` (e6b5040) with tag `management-baseline-0.4.0`; not pushed, 0.4.0 not published |
-| Plan docs | Extraction and delivery docs updated for the resolved release decision and demo persistence |
-| Gate 1: runtime, auth, database, bootstrap | **Done and verified** (production build, real PostgreSQL) |
-| Gate 2: organization monitoring end to end | **Done and verified** except the browser walkthrough and native provider read (see Needs you) |
-| Gate 3: capacity and renewal decisions | Partially done: pure policy relocated with tests, immutable policy revisions, in-app explanations. Not done: billing contexts, quotes, proposals, renewal UI |
-| Gate 4: authorized effects and recovery | Not started beyond relocated adapter/action code; blocked on live inputs regardless |
-| Gate 5: self-hosting and release | Partially done: setup script, lock-protected migrations, health, lease, shutdown; Docker image builds (99 MB) and the Compose stack ran locally with restart persistence. Not done: clean-machine run, backup/restore procedure, upgrade notes |
+| HCP extraction | Release validation passed independently. Commit e6b5040 fast-forwarded and pushed to origin/main; annotated management-baseline-0.4.0 tag pushed, pointing to 68a1afc. Local merged branch removed. |
+| HCP npm release | Blocked: npm whoami against registry.npmjs.org returns E401. Protocol, SDK and runner 0.4.0 remain vendored with checksums until publication. No registry dependency switch was made. |
+| Gate 1 | Production runtime, bootstrap and database verified; identity/recovery contract still incomplete. Do not mark the whole gate done. |
+| Gate 2 | Browser bootstrap → organization → member invitation/redemption → machine approval → real Codex observation → account history verified. Access and persistence fixes pass regressions. Offboarding, retention and other findings below remain. |
+| Gate 3 | Pure policy and exact minor-unit money code relocated; billing contexts, quotes, proposals and renewal UI remain unimplemented. |
+| Gate 4 | Durable authorization/action/recovery services unimplemented; live connector stays disabled. |
+| Gate 5 | Fresh source copy without node_modules or local state built and ran with a new Compose project/volume; restart preserved installation state. Separate PostgreSQL backup/restore passed. No separate clean physical machine or cross-version upgrade tested. |
+| App Git | Reviewed changes remain on implement-monitoring. No remote is configured. Recommend a draft PR after the owner names the GitHub destination. |
 
-## Needs you
+## Fixes made during review
 
-1. **Push and publish HCP.** In `/Users/qazisaad/Prolution/t3_p2a_exploration/hcp-runner`: push branch `remove-management` and tag `management-baseline-0.4.0`, merge, then `npm run release:publish` (needs npm login with publish access to `@harness-control`). After publication, replace the three `file:vendor/...` entries in `package.json` with `0.4.0`, run `npm install`, delete `vendor/`, and re-run the tests. Until then the app uses the vendored 0.4.0 tarballs whose SHA-256 values are in `vendor/MANIFEST.json` and match the HCP release manifest.
-2. **Browser walkthrough** of the app (gate 2 acceptance says a member sees a real observation rendered). Server-side rendering, redirects and every server function are covered by tests and curl, but no page was opened in a browser and no screenshot exists. Steps: `scripts/dev-db.sh`, `npm run setup`, load `.local/app.env`, `npm run db:migrate`, `npm run build && npm start`, open `/bootstrap`.
-3. **Native provider read.** The integration tests inject fixture provider data (labelled as such). A separate read-only run with a real `hcp-runner` against a signed-in Codex or Claude account has not been done from this app. `npx @harness-control/runner connect ws://localhost:3000/runner` against a running instance, then enable `account_usage` on a provider in the runner config.
-4. **Clean-machine test** (gate 5). The Compose stack ran on this machine (see evidence). Repeat on a clean machine: clone, `npm run setup`, `POSTGRES_PASSWORD=... PORT=... docker compose up -d --build`, bootstrap in the browser, pair a runner, restart, and record the result.
-5. **Browser check of the reduced HCP account demo** (`npm run demo:accounts` in the HCP checkout).
-6. **Gate 4 live inputs** (later): Claude Enterprise organization id, designated test member, admin key reference via env or secret manager, verified spend-period contract, explicit allowed test change.
-7. **Commit decision.** All app work is committed on local branch `implement-monitoring`, not on `main`, and is not pushed. Tell me whether to open a PR or merge.
+- **Member data isolation:** filter source rows by the authenticated member before the canonical reducer groups accounts. Previously, sharing an account key with another member exposed that member's sources, newer quota and history. Restrict overview member data and redact another member's assignment id. Regression uses the same account on two members' machines with different observations.
+- **Durable generation fencing:** lock and validate the current runner generation/revocation in the same database transaction that rebuilds canonical source state and persists a snapshot. Ignore older/equal observations before updating provider-account metadata/history. In-memory socket checks alone did not protect against database races.
+- **Connection/revocation races:** serialize generation allocation, reject stale attachment, recheck authority before reads and compare-and-set the expected generation during revocation.
+- **Atomic bootstrap and organization creation:** bind Better Auth's adapter to the surrounding transaction. Injected audit failures now roll back the auth user/session or organization/membership/policy together with the app operation.
+- **Auth endpoint boundary:** public organization mutations must pass through app services. Raw Better Auth organization endpoints previously bypassed policy seeding and audit boundaries. Session/sign-in/sign-out remain available; public sign-up remains closed.
+- **Lease recovery:** losing the lease fences sockets without permanently closing the WebSocket listener. A real runner reconnects and persists a fresh read after reacquisition in integration tests.
+- **Setup:** generated local database settings now match the supplied dev database; Compose receives one generated password shared by app and database. Repeated setup preserves configuration, including optional rotation keys. The dev database script starts existing stopped containers rather than deleting them. README uses Node env-file loading.
+- **Invitation navigation:** signed-out existing users get a sign-in link returning to the invitation. Login return paths reject protocol-relative and backslash forms.
+- **Test reliability:** the concurrent-bootstrap test signs in as the actual winner rather than assuming the first request wins.
 
-## Completed
+## Review evidence
+
+| Check | Independent result |
+| --- | --- |
+| Typecheck and production build | Passed |
+| Unit tests | 9 passed |
+| Integration tests | 11 passed, 20 total tests across 5 files; dedicated PostgreSQL review database |
+| New rollback tests | Audit failure leaves no bootstrap user/session; organization failure leaves no organization/membership; retry succeeds |
+| New isolation/persistence tests | Same provider account across members stays private; stale generation, revocation and older snapshot cannot overwrite stored reading |
+| Lease recovery test | Competing lease fences the real WebSocket; reacquire → public runner reconnect → refresh persists successfully |
+| Browser | Bootstrap, organization creation, invite creation/redemption, member role, real machine approval, dashboard, account detail/history and refresh inspected; screenshots viewed in review session; temporary real runner revoked through UI |
+| Native provider | Vendored public hcp-runner 0.4.0 connect against the app with explicit local Codex account-usage opt-in; signed-in provider quota, plan and reset rendered. No fixture collector, prompts or provider writes in this manual scenario. |
+| HCP reduced demo | Opened in browser; connected native Codex read, quota/reset/freshness shown; Claude sharing disabled and labelled. No management policy or billing UI. |
+| HCP release check | Passed full release:check, including pack, clean install and public SDK acceptance over WebSocket |
+| Compose | Fresh source copy, isolated project capacity-review-clean, new PostgreSQL volume, production image built, migration exited successfully, readiness 200, app restart preserved installation row |
+| Backup/restore | Custom-format dump of actual review database restored to separate empty PostgreSQL 17 database: 1 organization, 2 members, 1 runner, 4 history rows. Restored production app ready after copied lease expiry. Private backup and keys excluded from Git. |
+| Setup repetition | Generated configuration unchanged on repeat; a separate dev container retained a marker row across stop → setup → restart |
+| Production dependency audit | 4 moderate reports through Better Auth's optional drizzle-kit peer → esbuild tooling; no high/critical. No esbuild development server is used by production. Remove unnecessary tooling or resolve upstream chain before release; do not apply the suggested breaking downgrade blindly. |
+
+Automated provider scenarios still use labelled fixture collectors. The separate manual Codex scenario supplies real-provider evidence, not automated cross-provider coverage. Docker's saved credential helper stalled the initial build; an isolated empty Docker auth config allowed the public base-image download. The user's Docker login was unchanged.
+
+## Open review findings, in priority order
+
+1. **Identity contract is unmet (release blocker).** auth/auth.ts disables email verification; redeemInvitation creates a user/session using the invitation alone. This contradicts implementation/03-behavior-and-recovery.md. Add independent invitee authentication and operator recovery, or explicitly revise the product contract after a reviewed identity decision. SMTP env variables currently do nothing. Invitation creation/redemption/acceptance also need transactional audit coverage and cancellation/expiry race tests; existing-user acceptance currently has no audit event.
+2. **Offboarding is missing (release blocker).** There is runner revocation, but no complete app-owned member removal/role-change/session revocation/runner fencing workflow. Raw auth mutation routes are now blocked, so they must not be treated as a replacement for this workflow. Include last-owner protection and active-session/running-socket tests.
+3. **Public admission and runtime enforcement are incomplete.** Pairing routes have no rate limits, request bodies are fully read before the size check, pending records accumulate, and sockets have no demonstrated hello/liveness admission bounds. Readiness/WS honor the lease, but a process without it still serves browser mutation handlers. Close these before public multi-user deployment; singleton readiness alone is not enforcement for HTTP mutations.
+4. **Monitoring lifecycle gaps.** Retention deletion, explicit source retirement and assignment-conflict derivation are absent. Revoked sources retain readings but account pages do not clearly show the source's revoked/disconnected state; a recent historical reading can still be labelled fresh. Add separate connection-status disclosure without fabricating HCP observations. The schema lacks the composite organization foreign keys promised by the contract.
+5. **Test coverage is narrower than the original report.** The original matching-proof redelivery test actually tested a wrong proof; correct same-proof retry still needs an explicit assertion. Role changes, offboarding, source account switches and real Claude reads have not been verified. The test suite resets its target schema, so only use a disposable test database.
+6. **Release and deployment gaps.** App remote/CI/PR unavailable until a destination is supplied. npm publication pending. Separate-machine install, tested TLS/proxy example and cross-version upgrade remain open. Dev tooling's moderate audit chain should be removed from the production install. HCP connect still mentions P2A in generic pairing output, a wording cleanup for a subsequent HCP change.
+
+These findings are application/release work, not reasons to put organization policy back into HCP.
+
+## Needs the owner
+
+- Authenticate npm CLI with publish access to @harness-control, then confirm readiness. Publishing was attempted only as an authentication preflight and failed E401; no package was published.
+- Name the app's GitHub owner/repository and visibility. No app code has been pushed or merged; a draft PR is recommended while blockers remain.
+- Provide a separate clean deployment host for final gate 5 acceptance if that specific guarantee is required.
+- Later, provide the documented Claude Enterprise test organization/member/admin-key reference and explicit allowed live test change. These inputs are needed only for live connector validation, not for writing the remaining application services.
+
+## Next implementation order
+
+1. Resolve identity/recovery and offboarding; finish admission, lifecycle and isolation contracts with regression tests. Keep billing writes disabled.
+2. Publish HCP 0.4.0, replace all three vendored file dependencies with exact registry versions, regenerate lockfile and rerun clean-install/integration validation.
+3. Complete gate 3 billing contexts, quotes and proposals; then gate 4 durable authorization, reservations and reconciliation.
+4. Establish app CI/draft PR, repeat deployment acceptance on a separate clean host, and validate upgrades before calling this release-ready.
+
+## Historical implementation record
+
+The sections below preserve the original agent's evidence and choices. Any broader completion claim is superseded by the reviewed status above.
 
 ### 2026-09-14: App gates 1 and 2 implemented and verified
 
@@ -78,19 +131,3 @@ Injected provider data in the integration scenario is fixture data and is labell
 - Organization creation is allowed for any signed-in user (they become owner). Membership elsewhere remains invitation-only.
 - The runner endpoint and pairing URLs derive from `APP_ORIGIN`, never from request headers. Runners must be given that exact origin; the runner compares it.
 - The account demo in HCP keeps state in memory only.
-
-## Open risks and gaps
-
-- `file:` tarball dependencies are not acceptable for a public release; switch after publication.
-- Rate limiting on the unauthenticated pairing routes is not implemented; requests expire after 10 minutes and only carry identity plus a hash.
-- No SMTP delivery yet; administrators copy invitation links. Password recovery for a local operator is not implemented.
-- Billing contexts, quotes, proposals, connector configuration, budget periods and actions (gates 3 and 4) are not implemented. The UI states this explicitly instead of showing placeholders as data.
-- Retention deletion and CSV export are not implemented.
-- Compose has run only on this machine; the clean-machine acceptance in gate 5 is still open.
-
-## Next steps (in order)
-
-1. Publish HCP 0.4.0 and switch to registry versions (needs you).
-2. Gate 3 remainder: billing contexts with revisions, quotes, proposals with stable decision identity, renewal review, decision explanations with missing fields.
-3. Gate 4: provider connections with encrypted secrets, budget periods, action ledger with PostgreSQL attempt ownership, dispatcher and read-only recovery, connector verification flow (execution disabled until live inputs exist).
-4. Gate 5: Compose run, backup/restore procedure with a tested sample, upgrade notes, clean-machine acceptance.

@@ -74,7 +74,7 @@ A scenario is end-to-end only when every named real boundary is traversed throug
 
 - App name is provisional; changing it has no architectural impact.
 - Production TanStack/Node/WebSocket composition is a gate-one spike, not yet verified here.
-- Registry checks on 2026-09-13 and 2026-09-14 returned protocol, SDK and runner `0.3.0` and management E404. Management is being removed from HCP before 0.4.0 so it is never published; app-side relocation from the tagged baseline has not started. Publish/verify the three-package account-capable core release before dependency pinning. Development may test recorded release artifacts, but a sibling checkout is never a release requirement.
+- Registry checks on 2026-09-13 and 2026-09-14 returned protocol, SDK and runner `0.3.0` and management E404. Management removal was pushed to HCP main at e6b5040 on 2026-09-14, with the baseline tag. App-side pure policy, spend and adapter relocation is implemented; full decision/action services are not. Publish/verify the three-package account-capable core release before dependency pinning. See [the current review report](../WORK-REPORT.md) for verified gates and release blockers. Development may test recorded release artifacts, but a sibling checkout is never a release requirement.
 - Enterprise key, test member, allowed live changes and provider spend-period evidence are not supplied.
 - Hosted domain, SMTP and provider credentials are deployment inputs, not prerequisites for writing the local app.
 - Horizontal scaling, subscription purchase/account issuance APIs and enterprise SSO are deferred scope, not hidden implementation gaps.

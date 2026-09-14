@@ -1,11 +1,11 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { WebSocket, WebSocketServer } from "ws";
 import { HCP_MESSAGE_MAX_ENCODED_BYTES, HCP_VERSION, HcpAccountUsageReducer } from "@harness-control/protocol";
 import { HcpHostConnection } from "@harness-control/sdk";
 import type { Db } from "../db/client";
-import { runners } from "../db/schema";
+import { member, runners } from "../db/schema";
 import { runtimeState } from "../runtime-state";
 import { consumeConnectionToken } from "./pairing";
 import { loadRunnerSources, persistSnapshot } from "./ingestion";
@@ -43,15 +43,20 @@ export class RunnerGateway {
   }
 
   async #prepare(runnerRowId: string): Promise<{ runner: RunnerRow; generation: number; reducer: HcpAccountUsageReducer } | undefined> {
-    const runner = await this.db.query.runners.findFirst({ where: eq(runners.id, runnerRowId) });
-    if (!runner || runner.revokedAt) return undefined;
-    const [updated] = await this.db.update(runners).set({ connectionGeneration: sql`${runners.connectionGeneration} + 1`, lastSeenAt: sql`now()` }).where(eq(runners.id, runner.id)).returning();
-    const reducer = new HcpAccountUsageReducer(await loadRunnerSources(runner.id, this.db));
-    return { runner: updated!, generation: updated!.connectionGeneration, reducer };
+    return this.db.transaction(async tx => {
+      const [runner] = await tx.select().from(runners).where(and(eq(runners.id, runnerRowId), isNull(runners.revokedAt))).for("update");
+      if (!runner || !runtimeState.leaseHeld || runtimeState.shuttingDown) return undefined;
+      const membership = await tx.query.member.findFirst({ where: and(eq(member.id, runner.memberId), eq(member.organizationId, runner.organizationId)) });
+      if (!membership) return undefined;
+      const [updated] = await tx.update(runners).set({ connectionGeneration: sql`${runners.connectionGeneration} + 1`, lastSeenAt: sql`now()` }).where(eq(runners.id, runner.id)).returning();
+      const reducer = new HcpAccountUsageReducer(await loadRunnerSources(runner.id, this.db));
+      return { runner: updated!, generation: updated!.connectionGeneration, reducer };
+    });
   }
 
   #attach(socket: WebSocket, runner: RunnerRow, generation: number, reducer: HcpAccountUsageReducer): void {
     const previous = this.#live.get(runner.id);
+    if (!runtimeState.leaseHeld || runtimeState.shuttingDown || previous && previous.generation >= generation) { socket.close(4000, "stale connection"); return; }
     if (previous) this.#fence(previous, "replaced by a newer connection");
     const connection = new HcpHostConnection({ send: message => { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); } }, { accounts: reducer });
     const live: Live = { runner, generation, socket, connection, reducer, accepted: false, accountUsage: false };
@@ -91,13 +96,19 @@ export class RunnerGateway {
   /** Read opted-in accounts for one runner; concurrent requests coalesce into the in-flight read. */
   read(runnerRowId: string): Promise<void> {
     const live = this.#live.get(runnerRowId);
+    if (!runtimeState.leaseHeld || runtimeState.shuttingDown) return Promise.reject(new Error("Runner runtime is not active."));
     if (!live || !live.accepted) return Promise.reject(new Error("Runner is not connected."));
     if (!live.accountUsage) return Promise.reject(new Error("Runner does not advertise account usage."));
     if (live.reading) return live.reading;
     live.reading = (async () => {
+      const current = await this.db.query.runners.findFirst({ where: eq(runners.id, runnerRowId) });
+      if (!current || current.revokedAt || current.connectionGeneration !== live.generation) {
+        this.disconnect(runnerRowId, "stale credential or generation");
+        throw new Error("Runner is no longer authorized.");
+      }
       const snapshot = await live.connection.readAccounts({}, undefined, { timeoutMs: this.options.readTimeoutMs ?? 150_000 });
-      if (this.#live.get(runnerRowId) !== live) return; // replaced meanwhile: the SDK already rejected mismatched hosts; never persist for a stale generation
-      await persistSnapshot({ organizationId: live.runner.organizationId, runnerRowId, snapshot: snapshot.payload, states: live.reducer.snapshot(), receivedAt: new Date() }, this.db);
+      if (this.#live.get(runnerRowId) !== live) throw new Error("Runner connection changed before persistence.");
+      await persistSnapshot({ organizationId: live.runner.organizationId, runnerRowId, generation: live.generation, snapshot: snapshot.payload, receivedAt: new Date() }, this.db);
       live.lastReadAt = new Date().toISOString(); delete live.lastError;
     })().catch(error => { live.lastError = error instanceof Error && /timed out|timeout/i.test(error.message) ? "Account read timed out." : "Account read failed."; throw error; })
       .finally(() => { delete live.reading; });
@@ -125,10 +136,14 @@ export class RunnerGateway {
     if (live) { this.#fence(live, reason); this.#live.delete(runnerRowId); }
   }
 
-  async close(): Promise<void> {
-    for (const live of this.#live.values()) this.#fence(live, "server shutting down");
+  fenceAll(reason: string): void {
+    for (const live of this.#live.values()) this.#fence(live, reason);
     this.#live.clear();
     for (const client of this.#sockets.clients) client.terminate();
+  }
+
+  async close(): Promise<void> {
+    this.fenceAll("server shutting down");
     await new Promise<void>(resolve => this.#sockets.close(() => resolve()));
   }
 }

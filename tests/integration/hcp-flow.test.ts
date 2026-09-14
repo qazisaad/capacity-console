@@ -11,7 +11,7 @@ import { RunnerConfigSchema } from "@harness-control/runner/config";
 import { AccountUsageReader, normalizeCodexUsage, type AccountCollector } from "@harness-control/runner/accounts";
 import { pairWithReferenceControlPlane, requestConnectionToken } from "@harness-control/runner/pairing";
 import { db } from "~/server/db/context";
-import { accountSources, observationHistory, pairingRequests, runners } from "~/server/db/schema";
+import { accountSources, observationHistory, pairingRequests, runners, runtimeLease } from "~/server/db/schema";
 import { auth } from "~/server/auth/auth";
 import { bootstrapAdmin, ensureInstallation } from "~/server/auth/bootstrap";
 import { createOrganization } from "~/server/auth/organizations";
@@ -210,6 +210,17 @@ describe("pairing, ingestion, isolation, revocation and restart", () => {
     const restored = await readOrganizationAccounts(ownerP.organizationId, new Date(), 300_000);
     const fresh = restored.accounts.find(account => account.sources.some(source => source.runnerRowId === runnerRowId));
     expect(fresh?.freshness).toBe("fresh");
+    // A lease loss fences existing sockets; regaining it must leave the listener usable.
+    await db().update(runtimeLease).set({ owner: "competing-process", expiresAt: new Date(Date.now() + 60_000) });
+    expect(await runtime.lease.acquire()).toBe(false);
+    expect(runtime.gateway.isConnected(runnerRowId)).toBe(false);
+    await connection.close();
+    await db().update(runtimeLease).set({ expiresAt: new Date(0) });
+    expect(await runtime.lease.acquire()).toBe(true);
+    connection = machine.connect(paired.credential);
+    await connection.connect();
+    for (let attempt = 0; attempt < 200 && !runtime.gateway.isConnected(runnerRowId); attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+    expect((await refreshRunner(devP, runnerRowId)).refreshed).toBe(true);
     await connection.close();
   });
 });

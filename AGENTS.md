@@ -1,6 +1,6 @@
 # Project instructions
 
-Read README.md and the ordered docs/implementation documents before implementation. This is currently a documentation-only independent app project. Do not treat planned interfaces or deployment commands as implemented features.
+Read README.md and the ordered docs/implementation documents before implementation. This independent app has a working monitoring implementation. Read docs/WORK-REPORT.md for verified behavior and open review findings; the implementation documents remain the intended contract, not a claim that every gate has passed.
 
 - HCP owns harness integration and account observations. This app owns organizations, cost policy and billing administration. Follow docs/implementation/04-hcp-extraction.md for relocation; do not change HCP merely to accommodate this product.
 - No runtime or source dependencies on P2A, Agentic Playground or T3. Use pinned public HCP protocol/SDK packages; employee machines separately run HCP runner.

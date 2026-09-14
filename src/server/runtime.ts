@@ -30,7 +30,7 @@ export async function createRuntime(options: { pollMs?: number; log?: (message: 
   else await ensureInstallation();
   const gateway = new RunnerGateway(db(), { log });
   setGateway(gateway);
-  const lease = new RuntimeLease(db(), { onLost: () => { log("runtime lease lost: fencing runner connections"); void gateway.close(); } });
+  const lease = new RuntimeLease(db(), { onLost: () => { log("runtime lease lost: fencing runner connections"); gateway.fenceAll("runtime lease lost"); } });
   if (schema.ok) {
     if (!(await lease.acquire())) log("another app process holds the runtime lease; this process serves HTTP only until the lease expires");
     lease.start();

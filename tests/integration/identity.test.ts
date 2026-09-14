@@ -39,14 +39,10 @@ describe("bootstrap, organizations and invitations", () => {
   });
 
   test("the administrator creates an organization, seeds policy revision 1, invites a member who redeems the link", async () => {
-    const signIn = await auth().api.signInEmail({ body: { email: "first@example.com", password: "correct-horse-battery-staple" }, headers: new Headers({ origin: process.env.APP_ORIGIN! }), returnHeaders: true });
+    const [winner] = await db().query.user.findMany();
+    const signIn = await auth().api.signInEmail({ body: { email: winner!.email, password: "correct-horse-battery-staple" }, headers: new Headers({ origin: process.env.APP_ORIGIN! }), returnHeaders: true });
     const admin = cookieHeaders(signIn.headers.getSetCookie());
-    // Wait: the winning attempt may have been the second email.
-    const created = await createOrganization(admin, { name: "Acme", slug: "acme" }).catch(async () => {
-      const alt = await auth().api.signInEmail({ body: { email: "second@example.com", password: "correct-horse-battery-staple" }, headers: new Headers({ origin: process.env.APP_ORIGIN! }), returnHeaders: true });
-      admin.set("cookie", cookieHeaders(alt.headers.getSetCookie()).get("cookie")!);
-      return createOrganization(admin, { name: "Acme", slug: "acme" });
-    });
+    const created = await createOrganization(admin, { name: "Acme", slug: "acme" });
     const owner = await requirePrincipal(admin);
     expect(owner.role).toBe("owner");
     expect(owner.organizationId).toBe(created.organizationId);

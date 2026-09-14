@@ -30,7 +30,7 @@ function Login() {
           setBusy(false);
           if (!result.ok) { setError(result.error); return; }
           await router.invalidate();
-          await router.navigate({ to: next && next.startsWith("/") ? next : "/" });
+          await router.navigate({ to: next && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/" });
         }}>
           {error && <Alert tone="error">{error}</Alert>}
           <Field label="Email"><Input name="email" type="email" autoComplete="username" required /></Field>

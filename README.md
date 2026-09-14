@@ -2,7 +2,7 @@
 
 An independent, open-source organization app for understanding coding-agent account capacity and managing authorized usage spending.
 
-**Status: monitoring product implemented and tested locally (gates 1 and 2 of the delivery plan); decisions, authorized effects and the release gate are in progress.** Capacity Console is a working name. See [the work report](docs/WORK-REPORT.md) for what is verified, what is deferred and what needs the repository owner.
+**Status: monitoring works locally, including browser pairing and a real Codex read. Review found open identity, offboarding and operational gaps; gates 1 and 2 are not fully accepted. Decisions and authorized effects remain incomplete.** Capacity Console is a working name. See [the work report](docs/WORK-REPORT.md) for what is verified, what is deferred and what needs the repository owner.
 
 Stack: TanStack Start, React, TypeScript, PostgreSQL, Drizzle, Better Auth (organization plugin) and a Node.js HCP WebSocket endpoint, all in one Node process plus PostgreSQL. No cloud service account is required. No runtime or source dependency on P2A, Agentic Playground or T3 exists.
 
@@ -20,17 +20,20 @@ Requires Node 22 and PostgreSQL (Docker is the quickest: `scripts/dev-db.sh`).
 
 ```sh
 npm ci
+scripts/dev-db.sh
 npm run setup                     # writes .local/app.env with generated secrets
-set -a; . .local/app.env; set +a  # or export the variables another way
-npm run db:migrate
-npm run build && npm start
+node --env-file=.local/app.env server/migrate.mjs
+npm run build
+node --env-file=.local/app.env server/index.mjs
 ```
 
 Open `APP_ORIGIN/bootstrap`, enter the bootstrap token from `.local/app.env`, create the organization, invite members. Each member pairs their machine with the public HCP runner:
 
 ```sh
-npx @harness-control/runner connect ws://localhost:3000/runner
+npx @harness-control/runner@0.4.0 connect ws://localhost:3000/runner
 ```
+
+Until 0.4.0 is published, use `node_modules/.bin/hcp-runner` from this checkout instead of the registry command above.
 
 The runner prints an approval link that opens the app. Enable account usage per provider in the runner configuration (see the HCP runner README).
 

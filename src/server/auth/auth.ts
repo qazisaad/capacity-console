@@ -5,6 +5,7 @@ import { organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { env, isSecureOrigin } from "../env";
 import { db } from "../db/context";
+import type { Db, Tx } from "../db/client";
 import * as schema from "../db/schema";
 import { randomToken } from "../secrets";
 import { ac, roles } from "./access";
@@ -15,7 +16,7 @@ export const internalSignupMarker: string = randomToken(32);
 
 export const INVITATION_TTL_SECONDS = 7 * 24 * 3600;
 
-function build() {
+function build(handle: Db | Tx = db()) {
   const e = env();
   return betterAuth({
     appName: "Capacity Console",
@@ -23,7 +24,7 @@ function build() {
     secret: e.BETTER_AUTH_SECRET,
     trustedOrigins: [e.APP_ORIGIN],
     telemetry: { enabled: false },
-    database: drizzleAdapter(db(), { provider: "pg", schema }),
+    database: drizzleAdapter(handle, { provider: "pg", schema }),
     emailAndPassword: { enabled: true, requireEmailVerification: false, minPasswordLength: 12, autoSignIn: true },
     advanced: { useSecureCookies: isSecureOrigin(e.APP_ORIGIN), cookiePrefix: "capacity" },
     hooks: {
@@ -53,4 +54,14 @@ export function auth(): ReturnType<typeof build> {
   return instance;
 }
 export function resetAuthForTests(): void { instance = undefined; }
+export function transactionalAuth(handle: Tx): ReturnType<typeof build> { return build(handle); }
+
+/** Organization mutations must pass through app-owned transactions and audit boundaries. */
+export function handleAuthRequest(request: Request): Promise<Response> {
+  const path = new URL(request.url).pathname.replace(/^\/api\/auth/, "");
+  if (!["/get-session", "/sign-in/email", "/sign-out", "/sign-up/email"].includes(path)) {
+    return Promise.resolve(Response.json({ error: "Use the application account-management flow." }, { status: 403 }));
+  }
+  return auth().handler(request);
+}
 export type Auth = ReturnType<typeof build>;

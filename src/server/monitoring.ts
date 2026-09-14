@@ -54,7 +54,9 @@ export async function revokeRunner(principal: Principal, input: z.infer<typeof r
   if (runner.revokedAt) throw new AuthorizationError(409, "This machine is already revoked.");
   if (runner.connectionGeneration !== data.expectedGeneration) throw new AuthorizationError(409, "This machine's connection state changed. Refresh and retry.");
   await db().transaction(async tx => {
-    await tx.update(runners).set({ revokedAt: new Date(), connectionGeneration: runner.connectionGeneration + 1 }).where(eq(runners.id, runner.id));
+    const [updated] = await tx.update(runners).set({ revokedAt: new Date(), connectionGeneration: data.expectedGeneration + 1 })
+      .where(and(eq(runners.id, runner.id), eq(runners.connectionGeneration, data.expectedGeneration))).returning({ id: runners.id });
+    if (!updated) throw new AuthorizationError(409, "This machine's connection state changed. Refresh and retry.");
     await recordAudit(tx, { organizationId: principal.organizationId, actorUserId: principal.userId, kind: "runner.revoked", subjectType: "runner", subjectId: runner.id, details: { hostId: runner.hostId, memberId: runner.memberId } });
   });
   gateway()?.disconnect(runner.id, "credential revoked");
@@ -66,8 +68,8 @@ export type AccountCard = AccountProjection & { decision: CapacityDecision; memb
 export async function overview(principal: Principal) {
   const policy = await activePolicy(principal.organizationId);
   const now = new Date();
-  const projection = await readOrganizationAccounts(principal.organizationId, now, policy.policy.max_observation_age_seconds * 1000);
-  const members = await db().select({ id: member.id, name: user.name }).from(member).innerJoin(user, eq(user.id, member.userId)).where(eq(member.organizationId, principal.organizationId));
+  const projection = await readOrganizationAccounts(principal.organizationId, now, policy.policy.max_observation_age_seconds * 1000, db(), principal.role === "member" ? principal.memberId : undefined);
+  const members = await db().select({ id: member.id, name: user.name }).from(member).innerJoin(user, eq(user.id, member.userId)).where(and(eq(member.organizationId, principal.organizationId), ...(principal.role === "member" ? [eq(member.id, principal.memberId)] : [])));
   const visible = principal.role === "member"
     ? projection.accounts.filter(account => account.sources.some(source => source.memberId === principal.memberId))
     : projection.accounts;

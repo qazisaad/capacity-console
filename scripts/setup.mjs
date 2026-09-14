@@ -7,14 +7,16 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const dir = resolve(root, ".local");
 const file = resolve(dir, "app.env");
 const origin = process.env.APP_ORIGIN ?? "http://localhost:3000";
-const databaseUrl = process.env.DATABASE_URL ?? "postgres://capacity:CHANGE_ME@127.0.0.1:5432/capacity";
+const databaseUrl = process.env.DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:54329/capacity_dev";
 mkdirSync(dir, { recursive: true, mode: 0o700 });
 const existing = existsSync(file) ? Object.fromEntries(readFileSync(file, "utf8").split("\n").filter(line => line && !line.startsWith("#")).map(line => { const index = line.indexOf("="); return [line.slice(0, index), line.slice(index + 1)]; })) : {};
 const keep = (name, generate) => existing[name] ?? generate();
 const values = {
+  ...existing, // Preserve rotation keys and optional operator configuration.
   APP_ORIGIN: existing.APP_ORIGIN ?? origin,
   PORT: existing.PORT ?? String(new URL(existing.APP_ORIGIN ?? origin).port || 3000),
-  DATABASE_URL: existing.DATABASE_URL ?? databaseUrl.replace("CHANGE_ME", randomBytes(18).toString("base64url")),
+  DATABASE_URL: existing.DATABASE_URL ?? databaseUrl,
+  POSTGRES_PASSWORD: keep("POSTGRES_PASSWORD", () => process.env.POSTGRES_PASSWORD ?? randomBytes(24).toString("base64url")),
   BETTER_AUTH_SECRET: keep("BETTER_AUTH_SECRET", () => randomBytes(48).toString("base64url")),
   CREDENTIAL_ENCRYPTION_KEY: keep("CREDENTIAL_ENCRYPTION_KEY", () => randomBytes(32).toString("base64")),
   CREDENTIAL_ENCRYPTION_KEY_ID: existing.CREDENTIAL_ENCRYPTION_KEY_ID ?? "k1",
@@ -27,4 +29,5 @@ console.log(`Wrote ${file}`);
 console.log(`Browser origin: ${values.APP_ORIGIN}`);
 console.log(`Employees pair machines with: hcp-runner connect ${values.APP_ORIGIN.replace(/^http/, "ws")}/runner`);
 console.log(existing.BOOTSTRAP_TOKEN ? "Bootstrap token unchanged (see the file)." : "Bootstrap token written to the file. Open /bootstrap after the first start and enter it once; then remove it from the deployed configuration.");
-console.log("Next: start PostgreSQL, run `npm run db:migrate`, then `npm run build && npm start` with this file loaded (e.g. `set -a; . .local/app.env; set +a`).");
+console.log("Local: scripts/dev-db.sh; node --env-file=.local/app.env server/migrate.mjs; npm run build; node --env-file=.local/app.env server/index.mjs");
+console.log("Docker: docker compose --env-file .local/app.env up -d --build");

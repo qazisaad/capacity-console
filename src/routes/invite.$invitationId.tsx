@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Alert, Button, Card, Field, Input } from "~/components/ui";
 import { acceptInvite, getInvitation, getMe, redeem } from "~/server/functions/identity";
@@ -34,6 +34,7 @@ function Invite() {
         </Card>
       ) : (
         <Card title="Create your account">
+          <p className="mb-4 text-sm">Already have an account? <Link className="underline" to="/login" search={{ next: `/invite/${invitationId}` }}>Sign in to accept this invitation</Link>.</p>
           <form className="space-y-4" onSubmit={async event => {
             event.preventDefault(); setBusy(true); setError(null);
             const form = new FormData(event.currentTarget);
