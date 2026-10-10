@@ -73,7 +73,7 @@ A scenario is end-to-end only when every named real boundary is traversed throug
 ## Current gaps and decision status
 
 - App name is provisional; changing it has no architectural impact.
-- Production TanStack/Node/WebSocket composition is a gate-one spike, not yet verified here.
+- Production TanStack/Node/WebSocket composition was verified on 2026-09-14. Identity, lifecycle and release acceptance gaps remain in the work report.
 - Registry checks on 2026-09-13 and 2026-09-14 returned protocol, SDK and runner `0.3.0` and management E404. Management removal was pushed to HCP main at e6b5040 on 2026-09-14, with the baseline tag. App-side pure policy, spend and adapter relocation is implemented; full decision/action services are not. Publish/verify the three-package account-capable core release before dependency pinning. See [the current review report](../WORK-REPORT.md) for verified gates and release blockers. Development may test recorded release artifacts, but a sibling checkout is never a release requirement.
 - Enterprise key, test member, allowed live changes and provider spend-period evidence are not supplied.
 - Hosted domain, SMTP and provider credentials are deployment inputs, not prerequisites for writing the local app.

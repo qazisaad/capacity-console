@@ -1,6 +1,6 @@
 # Move product policy out of HCP
 
-**Status: HCP removal in progress; app-side relocation not started.** Do not import the management package into the new app as an intermediate permanent architecture. Its source remains available at the tagged baseline commit below.
+**Status: HCP management removal was pushed on 2026-09-14. Pure policy, spend logic and adapter code are relocated with provenance; full application billing and recovery services remain incomplete.** Do not import the management package into the new app as an intermediate permanent architecture. Its source remains available at the tagged baseline commit below.
 
 ## Source baseline and evidence
 

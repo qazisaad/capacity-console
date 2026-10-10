@@ -2,6 +2,10 @@
 
 Maintained implementation and review record. The current status and open findings below supersede the original implementation claims retained in the historical section. Review date: 2026-09-14.
 
+## Repository publication (2026-10-10)
+
+The owner requested a public repository under qazisaad. Created https://github.com/qazisaad/capacity-console for the reviewed monitoring preview. The implementation and review history are published on main, with implement-monitoring preserved. A credential-pattern scan checked 133 historical text/file blobs without findings; private environment, runner credentials, observations and backups remain ignored. Typecheck, 9 unit tests and documentation links passed again before publication. The 20-test integration, native-provider, browser and container results below remain dated 2026-09-14; they were not rerun for this publication. No npm release or live billing execution was performed.
+
 ## Current assessment
 
 The monitoring path works through a real browser, public HCP runner, signed-in Codex account, WebSocket and PostgreSQL. It is a development preview, not yet a release-ready organization product. The original statement that everything remaining needs the owner was incorrect: identity, offboarding, admission controls and retention need application work.
@@ -15,7 +19,7 @@ The monitoring path works through a real browser, public HCP runner, signed-in C
 | Gate 3 | Pure policy and exact minor-unit money code relocated; billing contexts, quotes, proposals and renewal UI remain unimplemented. |
 | Gate 4 | Durable authorization/action/recovery services unimplemented; live connector stays disabled. |
 | Gate 5 | Fresh source copy without node_modules or local state built and ran with a new Compose project/volume; restart preserved installation state. Separate PostgreSQL backup/restore passed. No separate clean physical machine or cross-version upgrade tested. |
-| App Git | Reviewed changes remain on implement-monitoring. No remote is configured. Recommend a draft PR after the owner names the GitHub destination. |
+| App Git | Public repository: https://github.com/qazisaad/capacity-console. Reviewed app history published on main; implement-monitoring preserved. |
 
 ## Fixes made during review
 
@@ -57,14 +61,13 @@ Automated provider scenarios still use labelled fixture collectors. The separate
 3. **Public admission and runtime enforcement are incomplete.** Pairing routes have no rate limits, request bodies are fully read before the size check, pending records accumulate, and sockets have no demonstrated hello/liveness admission bounds. Readiness/WS honor the lease, but a process without it still serves browser mutation handlers. Close these before public multi-user deployment; singleton readiness alone is not enforcement for HTTP mutations.
 4. **Monitoring lifecycle gaps.** Retention deletion, explicit source retirement and assignment-conflict derivation are absent. Revoked sources retain readings but account pages do not clearly show the source's revoked/disconnected state; a recent historical reading can still be labelled fresh. Add separate connection-status disclosure without fabricating HCP observations. The schema lacks the composite organization foreign keys promised by the contract.
 5. **Test coverage is narrower than the original report.** The original matching-proof redelivery test actually tested a wrong proof; correct same-proof retry still needs an explicit assertion. Role changes, offboarding, source account switches and real Claude reads have not been verified. The test suite resets its target schema, so only use a disposable test database.
-6. **Release and deployment gaps.** App remote/CI/PR unavailable until a destination is supplied. npm publication pending. Separate-machine install, tested TLS/proxy example and cross-version upgrade remain open. Dev tooling's moderate audit chain should be removed from the production install. HCP connect still mentions P2A in generic pairing output, a wording cleanup for a subsequent HCP change.
+6. **Release and deployment gaps.** App repository is public; CI and a release pipeline remain unimplemented. npm publication pending. Separate-machine install, tested TLS/proxy example and cross-version upgrade remain open. Dev tooling's moderate audit chain should be removed from the production install. HCP connect still mentions P2A in generic pairing output, a wording cleanup for a subsequent HCP change.
 
 These findings are application/release work, not reasons to put organization policy back into HCP.
 
 ## Needs the owner
 
 - Authenticate npm CLI with publish access to @harness-control, then confirm readiness. Publishing was attempted only as an authentication preflight and failed E401; no package was published.
-- Name the app's GitHub owner/repository and visibility. No app code has been pushed or merged; a draft PR is recommended while blockers remain.
 - Provide a separate clean deployment host for final gate 5 acceptance if that specific guarantee is required.
 - Later, provide the documented Claude Enterprise test organization/member/admin-key reference and explicit allowed live test change. These inputs are needed only for live connector validation, not for writing the remaining application services.
 
@@ -73,7 +76,7 @@ These findings are application/release work, not reasons to put organization pol
 1. Resolve identity/recovery and offboarding; finish admission, lifecycle and isolation contracts with regression tests. Keep billing writes disabled.
 2. Publish HCP 0.4.0, replace all three vendored file dependencies with exact registry versions, regenerate lockfile and rerun clean-install/integration validation.
 3. Complete gate 3 billing contexts, quotes and proposals; then gate 4 durable authorization, reservations and reconciliation.
-4. Establish app CI/draft PR, repeat deployment acceptance on a separate clean host, and validate upgrades before calling this release-ready.
+4. Establish app CI and review future changes through PRs, repeat deployment acceptance on a separate clean host, and validate upgrades before calling this release-ready.
 
 ## Historical implementation record
 
